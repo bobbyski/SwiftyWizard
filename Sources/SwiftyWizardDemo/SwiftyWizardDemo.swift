@@ -78,8 +78,57 @@ private final class SwiftyWizardDemoAppDelegate: NSObject, NSApplicationDelegate
 }
 
 private struct SwiftyWizardDemoWindow: View {
+    @State private var output: [String: Any?] = [:]
+
     var body: some View {
-        SwiftyWizardView()
+        SwiftyWizardView(
+            wizardDef: """
+            wizard:
+              name: My new Swift wizard
+              language: Swift
+              category: Business
+
+              steps:
+                - ask:
+                    title: Create Project
+                    questions:
+                      - variable: project_name
+                        prompt: What is the name of your project?
+                        help: This is the name of the application's executable.
+                        type: string
+                        required: true
+                        default: My Great App
+
+                      - variable: project_folder
+                        prompt: Where should we create your {{project_name}} project?
+                        help: This is the location where the project will be built.
+                        type: directory
+                        required: true
+
+                - ask:
+                    title: Copyright
+                    questions:
+                      - variable: author
+                        prompt: Who is the copy right holder?
+                        help: this is the owner of the IP
+                        type: string
+
+                - do:
+                    internal: build_string
+                    variable: copyrigth_notice
+                    from: "Copyriight {{current_year}} {{author}}, All rights reserved"
+
+                - do:
+                    name: create project_name
+                    command: mkdir {{project_folder}}/{{project_name}}
+
+                - do:
+                    name: update project files
+                    internal: replaceVariables
+            """,
+            resources: [:],
+            output: $output
+        )
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Menu {
