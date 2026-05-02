@@ -174,7 +174,7 @@ private struct SwiftyWizardDemoWindow: View {
             - do:
                 internal: build_string
                 variable: copyrigth_notice
-                from: "Copyright {{current_year}} {{author}}, All rights reserved"
+                from: "Copyriight {{current_year}} {{author}}, All rights reserved"
 
             - do:
                 name: create project_name
