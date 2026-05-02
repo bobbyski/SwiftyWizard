@@ -12,20 +12,20 @@ public final class SwiftyWizard {
     public static func runWizard(
         wizardDef: String,
         resources: [String: Any?] = [:],
-        size: CGSize = CGSize(width: 400, height: 350)
+        size: CGSize = CGSize(width: 500, height: 350),
+        view: NSView? = nil
     ) async -> [String: Any?] {
         await withCheckedContinuation { continuation in
             let session = SwiftyWizardModalSession(continuation: continuation)
             let window = NSWindow(
                 contentRect: NSRect(origin: .zero, size: size),
-                styleMask: [.titled, .closable],
+                styleMask: [.borderless],
                 backing: .buffered,
                 defer: false
             )
 
             session.window = window
             window.delegate = session
-            window.title = "SwiftyWizard"
             window.isReleasedWhenClosed = false
             window.setContentSize(size)
             window.minSize = window.frame.size
@@ -38,11 +38,17 @@ public final class SwiftyWizard {
                     onExit: session.finish
                 )
             )
-            window.center()
-            window.makeKeyAndOrderFront(nil)
 
             SwiftyWizardModalSession.retain(session, for: window)
-            NSApplication.shared.runModal(for: window)
+
+            if let parentWindow = view?.window {
+                session.parentWindow = parentWindow
+                parentWindow.beginSheet(window)
+            } else {
+                window.center()
+                window.makeKeyAndOrderFront(nil)
+                NSApplication.shared.runModal(for: window)
+            }
         }
     }
     #else
@@ -50,7 +56,7 @@ public final class SwiftyWizard {
     public static func runWizard(
         wizardDef: String,
         resources: [String: Any?] = [:],
-        size: CGSize = CGSize(width: 400, height: 350)
+        size: CGSize = CGSize(width: 500, height: 350)
     ) async -> [String: Any?] {
         [:]
     }
@@ -83,6 +89,7 @@ private final class SwiftyWizardModalSession: NSObject, NSWindowDelegate {
 
     private var continuation: CheckedContinuation<[String: Any?], Never>?
     weak var window: NSWindow?
+    weak var parentWindow: NSWindow?
 
     init(continuation: CheckedContinuation<[String: Any?], Never>) {
         self.continuation = continuation
@@ -94,8 +101,14 @@ private final class SwiftyWizardModalSession: NSObject, NSWindowDelegate {
         }
 
         self.continuation = nil
-        NSApplication.shared.stopModal()
-        window?.close()
+
+        if let window, let parentWindow {
+            parentWindow.endSheet(window)
+        } else {
+            NSApplication.shared.stopModal()
+            window?.close()
+        }
+
         continuation.resume(returning: output)
         release()
     }

@@ -79,6 +79,7 @@ private final class SwiftyWizardDemoAppDelegate: NSObject, NSApplicationDelegate
 
 private struct SwiftyWizardDemoWindow: View {
     @State private var renderedDoSteps = ""
+    @State private var hostView: NSView?
 
     private let resources: [String: Any?] = ["current_year": 2026]
 
@@ -88,7 +89,8 @@ private struct SwiftyWizardDemoWindow: View {
                 Task {
                     let output = await SwiftyWizard.runWizard(
                         wizardDef: demoWizardDef,
-                        resources: resources
+                        resources: resources,
+                        view: hostView
                     )
                     renderedDoSteps = renderDoSteps(from: demoWizardDef, output: output)
                 }
@@ -99,18 +101,21 @@ private struct SwiftyWizardDemoWindow: View {
                 .border(.secondary.opacity(0.35))
         }
         .padding(16)
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Menu {
-                        Button("Quit SwiftyWizardDemo") {
-                            NSApplication.shared.terminate(nil)
-                        }
-                        .keyboardShortcut("q")
-                    } label: {
-                        Label("App", systemImage: "app")
+        .background(ViewResolver { view in
+            hostView = view
+        })
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Menu {
+                    Button("Quit SwiftyWizardDemo") {
+                        NSApplication.shared.terminate(nil)
                     }
+                    .keyboardShortcut("q")
+                } label: {
+                    Label("App", systemImage: "app")
                 }
             }
+        }
     }
 
     private var demoWizardDef: String {
@@ -258,5 +263,25 @@ private struct DemoParsedLine {
         self.raw = raw
         self.indent = raw.prefix { $0 == " " }.count
         self.text = raw.trimmingCharacters(in: .whitespaces)
+    }
+}
+
+private struct ViewResolver: NSViewRepresentable {
+    var onResolve: (NSView) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+
+        DispatchQueue.main.async {
+            onResolve(view)
+        }
+
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            onResolve(nsView)
+        }
     }
 }
