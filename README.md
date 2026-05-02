@@ -8,6 +8,12 @@ The package currently includes:
 - `SwiftyWizard.runWizard(...)`, an async macOS helper that presents the wizard modally or as a sheet.
 - `SwiftyWizardDemo`, a small macOS demo app.
 
+## Screenshots
+
+![SwiftyWizard create project step](Docs/Images/SwiftyWizard1.jpg)
+
+![SwiftyWizard copyright step](Docs/Images/SwiftyWizard2.jpg)
+
 ## Requirements
 
 - Swift 5.9+
@@ -20,7 +26,7 @@ Add SwiftyWizard to your package dependencies:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/your-org/SwiftyWizard.git", from: "0.1.0")
+    .package(url: "https://github.com/your-org/SwiftyWizard.git", from: "1.0.1")
 ]
 ```
 
