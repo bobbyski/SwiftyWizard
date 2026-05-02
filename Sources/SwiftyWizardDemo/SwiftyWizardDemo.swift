@@ -87,10 +87,15 @@ private struct SwiftyWizardDemoWindow: View {
               name: My new Swift wizard
               language: Swift
               category: Business
+              exitButton: exit
 
               steps:
                 - ask:
                     title: Create Project
+                    background: background.png
+                    icon: headerImage.png
+                    cancelButtonText: Cancel
+                    nextButtonText: Next
                     questions:
                       - variable: project_name
                         prompt: What is the name of your project?
@@ -107,6 +112,10 @@ private struct SwiftyWizardDemoWindow: View {
 
                 - ask:
                     title: Copyright
+                    backgroundColor: #555580
+                    cancelButtonText: Cancel
+                    backButtonText: Back
+                    doneButtonText: OK
                     questions:
                       - variable: author
                         prompt: Who is the copy right holder?
@@ -126,7 +135,7 @@ private struct SwiftyWizardDemoWindow: View {
                     name: update project files
                     internal: replaceVariables
             """,
-            resources: [:],
+            resources: ["current_year": 2026],
             output: $output
         )
             .toolbar {
