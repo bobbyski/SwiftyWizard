@@ -27,10 +27,14 @@ public final class SwiftyWizard {
             window.delegate = session
             window.title = "SwiftyWizard"
             window.isReleasedWhenClosed = false
+            window.setContentSize(size)
+            window.minSize = window.frame.size
+            window.maxSize = window.frame.size
             window.contentViewController = NSHostingController(
                 rootView: SwiftyWizardModalView(
                     wizardDef: wizardDef,
                     resources: resources,
+                    size: size,
                     onExit: session.finish
                 )
             )
@@ -57,6 +61,7 @@ public final class SwiftyWizard {
 private struct SwiftyWizardModalView: View {
     let wizardDef: String
     let resources: [String: Any?]
+    let size: CGSize
     let onExit: ([String: Any?]) -> Void
 
     @State private var output: [String: Any?] = [:]
@@ -68,6 +73,7 @@ private struct SwiftyWizardModalView: View {
             output: $output,
             onExit: onExit
         )
+        .frame(width: size.width, height: size.height)
     }
 }
 
