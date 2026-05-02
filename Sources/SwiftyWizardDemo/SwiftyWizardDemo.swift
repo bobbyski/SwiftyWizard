@@ -78,66 +78,27 @@ private final class SwiftyWizardDemoAppDelegate: NSObject, NSApplicationDelegate
 }
 
 private struct SwiftyWizardDemoWindow: View {
-    @State private var output: [String: Any?] = [:]
+    @State private var renderedDoSteps = ""
+
+    private let resources: [String: Any?] = ["current_year": 2026]
 
     var body: some View {
-        SwiftyWizardView(
-            wizardDef: """
-            wizard:
-              name: My new Swift wizard
-              language: Swift
-              category: Business
-              exitButton: exit
+        VStack(alignment: .leading, spacing: 12) {
+            Button("Run Wizard") {
+                Task {
+                    let output = await SwiftyWizard.runWizard(
+                        wizardDef: demoWizardDef,
+                        resources: resources
+                    )
+                    renderedDoSteps = renderDoSteps(from: demoWizardDef, output: output)
+                }
+            }
 
-              steps:
-                - ask:
-                    title: Create Project
-                    background: background.png
-                    icon: headerImage.png
-                    cancelButtonText: Cancel
-                    nextButtonText: Next
-                    questions:
-                      - variable: project_name
-                        prompt: What is the name of your project?
-                        help: This is the name of the application's executable.
-                        type: string
-                        required: true
-                        default: My Great App
-
-                      - variable: project_folder
-                        prompt: Where should we create your {{project_name}} project?
-                        help: This is the location where the project will be built.
-                        type: directory
-                        required: true
-
-                - ask:
-                    title: Copyright
-                    backgroundColor: #555580
-                    cancelButtonText: Cancel
-                    backButtonText: Back
-                    doneButtonText: OK
-                    questions:
-                      - variable: author
-                        prompt: Who is the copy right holder?
-                        help: this is the owner of the IP
-                        type: string
-
-                - do:
-                    internal: build_string
-                    variable: copyrigth_notice
-                    from: "Copyriight {{current_year}} {{author}}, All rights reserved"
-
-                - do:
-                    name: create project_name
-                    command: mkdir {{project_folder}}/{{project_name}}
-
-                - do:
-                    name: update project files
-                    internal: replaceVariables
-            """,
-            resources: ["current_year": 2026],
-            output: $output
-        )
+            TextEditor(text: $renderedDoSteps)
+                .font(.system(.body, design: .monospaced))
+                .border(.secondary.opacity(0.35))
+        }
+        .padding(16)
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Menu {
@@ -150,5 +111,152 @@ private struct SwiftyWizardDemoWindow: View {
                     }
                 }
             }
+    }
+
+    private var demoWizardDef: String {
+        """
+        wizard:
+          name: My new Swift wizard
+          language: Swift
+          category: Business
+          exitButton: exit
+
+          steps:
+            - ask:
+                title: Create Project
+                background: background.png
+                icon: headerImage.png
+                cancelButtonText: Cancel the wizard
+                nextButtonText: Next page
+                questions:
+                  - variable: project_name
+                    prompt: What is the name of your project?
+                    help: This is the name of the application's executable.
+                    type: string
+                    required: true
+                    default: My Great App
+
+                  - variable: project_folder
+                    prompt: Where should we create your {{project_name}} project?
+                    help: This is the location where the project will be built.
+                    type: directory
+                    required: true
+
+            - ask:
+                title: Copyright
+                backgroundColor: #555580
+                cancelButtonText: Cancel
+                backButtonText: Back to previous
+                doneButtonText: OK
+                questions:
+                  - variable: author
+                    prompt: Who is the copy right holder?
+                    help: this is the owner of the IP
+                    type: string
+
+            - do:
+                internal: build_string
+                variable: copyrigth_notice
+                from: "Copyriight {{current_year}} {{author}}, All rights reserved"
+
+            - do:
+                name: create project_name
+                command: mkdir {{project_folder}}/{{project_name}}
+
+            - do:
+                name: update project files
+                internal: replaceVariables
+        """
+    }
+
+    private func renderDoSteps(from wizardDef: String, output: [String: Any?]) -> String {
+        extractDoSteps(from: wizardDef)
+            .map { renderTemplate($0, output: output) }
+            .joined(separator: "\n\n")
+    }
+
+    private func extractDoSteps(from wizardDef: String) -> [String] {
+        let lines = wizardDef
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { DemoParsedLine(raw: String($0)) }
+
+        var steps: [String] = []
+        var index = 0
+
+        while index < lines.count {
+            let line = lines[index]
+
+            guard line.text == "- do:" else {
+                index += 1
+                continue
+            }
+
+            let startIndex = index
+            index += 1
+
+            while index < lines.count {
+                let nextLine = lines[index]
+                if nextLine.indent == line.indent && nextLine.text.hasPrefix("- ") {
+                    break
+                }
+                index += 1
+            }
+
+            steps.append(
+                lines[startIndex..<index]
+                    .map(\.raw)
+                    .joined(separator: "\n")
+            )
+        }
+
+        return steps
+    }
+
+    private func renderTemplate(_ text: String, output: [String: Any?]) -> String {
+        var rendered = ""
+        var remainder = text[...]
+
+        while let startRange = remainder.range(of: "{{") {
+            rendered += remainder[..<startRange.lowerBound]
+
+            let afterStart = remainder[startRange.upperBound...]
+            guard let endRange = afterStart.range(of: "}}") else {
+                rendered += remainder[startRange.lowerBound...]
+                return rendered
+            }
+
+            let key = String(afterStart[..<endRange.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            rendered += templateValue(for: key, output: output) ?? "{{\(key.capitalized)}}"
+            remainder = afterStart[endRange.upperBound...]
+        }
+
+        rendered += remainder
+        return rendered
+    }
+
+    private func templateValue(for key: String, output: [String: Any?]) -> String? {
+        if let outputValue = output[key] ?? nil {
+            return String(describing: outputValue)
+        }
+
+        if let resourceValue = resources[key] ?? nil {
+            return String(describing: resourceValue)
+        }
+
+        return nil
+    }
+}
+
+private struct DemoParsedLine {
+    var raw: String
+    var indent: Int
+    var text: String
+
+    init(raw: String) {
+        self.raw = raw
+        self.indent = raw.prefix { $0 == " " }.count
+        self.text = raw.trimmingCharacters(in: .whitespaces)
     }
 }

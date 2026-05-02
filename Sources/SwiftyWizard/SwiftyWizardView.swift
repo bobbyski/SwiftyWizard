@@ -16,16 +16,19 @@ public struct SwiftyWizardView: View {
     @State private var isFilePickerPresented = false
 
     private let wizard: WizardDefinition
+    private let onExit: ([String: Any?]) -> Void
 
     public init(
         wizardDef: String,
         resources: [String: Any?],
-        output: Binding<[String: Any?]>
+        output: Binding<[String: Any?]>,
+        onExit: @escaping ([String: Any?]) -> Void = { _ in }
     ) {
         self.wizardDef = wizardDef
         self.resources = resources
         self._output = output
         self.wizard = WizardDefinitionParser.parse(wizardDef)
+        self.onExit = onExit
     }
 
     public var body: some View {
@@ -85,21 +88,23 @@ public struct SwiftyWizardView: View {
     }
 
     private var buttonBar: some View {
-        HStack(spacing: 10) {
+        let step = wizard.askSteps[currentStepIndex]
+
+        return HStack(spacing: 10) {
             Spacer()
 
-            Button("Cancel", action: cancel)
+            Button(renderTemplate(step.cancelButtonText ?? "Cancel"), action: cancel)
 
             if currentStepIndex > 0 {
-                Button("Back", action: back)
+                Button(renderTemplate(step.backButtonText ?? "Back"), action: back)
             }
 
             if currentStepIndex < wizard.askSteps.count - 1 {
-                Button("Next", action: next)
+                Button(renderTemplate(step.nextButtonText ?? "Next"), action: next)
                     .buttonStyle(.borderedProminent)
                     .disabled(!canLeaveCurrentStep)
             } else {
-                Button("Done", action: done)
+                Button(renderTemplate(step.doneButtonText ?? "Done"), action: done)
                     .buttonStyle(.borderedProminent)
                     .disabled(!canLeaveCurrentStep)
             }
@@ -295,6 +300,7 @@ public struct SwiftyWizardView: View {
 
     private func cancel() {
         setExitButton(.cancel)
+        onExit(output)
         currentStepIndex = 0
     }
 
@@ -314,6 +320,7 @@ public struct SwiftyWizardView: View {
             return
         }
         setExitButton(.done)
+        onExit(output)
     }
 
     private func setExitButton(_ exitButton: SwiftyWizardExitButton) {
@@ -387,6 +394,10 @@ private struct WizardDefinition {
 private struct WizardAskStep: Identifiable {
     let id = UUID()
     var title: String
+    var cancelButtonText: String?
+    var backButtonText: String?
+    var nextButtonText: String?
+    var doneButtonText: String?
     var questions: [WizardQuestion]
 }
 
@@ -509,12 +520,24 @@ private enum WizardDefinitionParser {
 
     private static func parseAskStep(from lines: [ParsedLine]) -> WizardAskStep {
         var title = "Step"
+        var cancelButtonText: String?
+        var backButtonText: String?
+        var nextButtonText: String?
+        var doneButtonText: String?
         var questions: [WizardQuestion] = []
         var questionStartIndexes: [Int] = []
 
         for (index, line) in lines.enumerated() {
             if line.text.hasPrefix("title:") && questions.isEmpty {
                 title = value(after: "title:", in: line.text)
+            } else if line.text.hasPrefix("cancelButtonText:") {
+                cancelButtonText = value(after: "cancelButtonText:", in: line.text)
+            } else if line.text.hasPrefix("backButtonText:") {
+                backButtonText = value(after: "backButtonText:", in: line.text)
+            } else if line.text.hasPrefix("nextButtonText:") {
+                nextButtonText = value(after: "nextButtonText:", in: line.text)
+            } else if line.text.hasPrefix("doneButtonText:") {
+                doneButtonText = value(after: "doneButtonText:", in: line.text)
             }
 
             if line.text.hasPrefix("- variable:") {
@@ -527,7 +550,14 @@ private enum WizardDefinitionParser {
             questions.append(parseQuestion(from: Array(lines[startIndex..<endIndex])))
         }
 
-        return WizardAskStep(title: title, questions: questions)
+        return WizardAskStep(
+            title: title,
+            cancelButtonText: cancelButtonText,
+            backButtonText: backButtonText,
+            nextButtonText: nextButtonText,
+            doneButtonText: doneButtonText,
+            questions: questions
+        )
     }
 
     private static func parseQuestion(from lines: [ParsedLine]) -> WizardQuestion {
