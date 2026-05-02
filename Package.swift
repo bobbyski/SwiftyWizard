@@ -22,7 +22,10 @@ let package = Package(
         .target(name: "SwiftyWizard"),
         .executableTarget(
             name: "SwiftyWizardDemo",
-            dependencies: ["SwiftyWizard"]
+            dependencies: ["SwiftyWizard"],
+            resources: [
+                .process("Resources")
+            ]
         )
     ]
 )
