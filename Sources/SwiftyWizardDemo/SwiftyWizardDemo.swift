@@ -14,6 +14,7 @@ struct SwiftyWizardDemoApp: App {
     }
 }
 
+/// Installs a small standard app menu for the SwiftPM-launched macOS demo app.
 private final class SwiftyWizardDemoAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
@@ -81,7 +82,16 @@ private struct SwiftyWizardDemoWindow: View {
     @State private var renderedDoSteps = ""
     @State private var hostView: NSView?
 
-    private let resources: [String: Any?] = ["current_year": 2026]
+    private var resources: [String: Any?] {
+        var resources: [String: Any?] = ["current_year": 2026]
+
+        // The wizard references images by filename, so those filenames are the resource keys.
+        for filename in ["headerImage.png", "background.png"] {
+            resources[filename] = loadImageResource(named: filename)
+        }
+
+        return resources
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -129,8 +139,7 @@ private struct SwiftyWizardDemoWindow: View {
           steps:
             - ask:
                 title: Create Project
-                background: background.png
-                icon: headerImage.png
+                headerImage: headerImage.png
                 cancelButtonText: Cancel the wizard
                 nextButtonText: Next page
                 questions:
@@ -149,6 +158,9 @@ private struct SwiftyWizardDemoWindow: View {
 
             - ask:
                 title: Copyright
+                background: background.png
+                backgroundAlpha: 30%
+                headerImage: headerImage.png
                 backgroundColor: #555580
                 cancelButtonText: Cancel
                 backButtonText: Back to previous
@@ -162,7 +174,7 @@ private struct SwiftyWizardDemoWindow: View {
             - do:
                 internal: build_string
                 variable: copyrigth_notice
-                from: "Copyriight {{current_year}} {{author}}, All rights reserved"
+                from: "Copyright {{current_year}} {{author}}, All rights reserved"
 
             - do:
                 name: create project_name
@@ -199,6 +211,7 @@ private struct SwiftyWizardDemoWindow: View {
             let startIndex = index
             index += 1
 
+            // A `do` block ends at the next sibling list item in the `steps` array.
             while index < lines.count {
                 let nextLine = lines[index]
                 if nextLine.indent == line.indent && nextLine.text.hasPrefix("- ") {
@@ -252,6 +265,19 @@ private struct SwiftyWizardDemoWindow: View {
 
         return nil
     }
+
+    private func loadImageResource(named filename: String) -> NSImage? {
+        let url = Bundle.module.url(
+            forResource: (filename as NSString).deletingPathExtension,
+            withExtension: (filename as NSString).pathExtension
+        )
+
+        guard let url else {
+            return nil
+        }
+
+        return NSImage(contentsOf: url)
+    }
 }
 
 private struct DemoParsedLine {
@@ -266,6 +292,7 @@ private struct DemoParsedLine {
     }
 }
 
+/// Reads the current AppKit view so the demo can present the wizard as a sheet.
 private struct ViewResolver: NSViewRepresentable {
     var onResolve: (NSView) -> Void
 

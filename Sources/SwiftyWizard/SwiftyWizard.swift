@@ -4,10 +4,19 @@ import SwiftUI
 import AppKit
 #endif
 
+/// Entry point for running a wizard as a modal SwiftUI flow.
 public final class SwiftyWizard {
     private init() {}
 
     #if os(macOS)
+    /// Presents a wizard and returns the values collected from its questions.
+    ///
+    /// - Parameters:
+    ///   - wizardDef: YAML text that describes the wizard.
+    ///   - resources: Optional named resources, such as images, available to the wizard.
+    ///   - size: The size of the modal wizard content. Defaults to 500 x 350.
+    ///   - view: Optional host view. When provided, the wizard is presented as a sheet on that view's window.
+    /// - Returns: The output dictionary collected by the wizard.
     @MainActor
     public static func runWizard(
         wizardDef: String,
@@ -17,7 +26,7 @@ public final class SwiftyWizard {
     ) async -> [String: Any?] {
         await withCheckedContinuation { continuation in
             let session = SwiftyWizardModalSession(continuation: continuation)
-            let window = NSWindow(
+            let window = SwiftyWizardModalWindow(
                 contentRect: NSRect(origin: .zero, size: size),
                 styleMask: [.borderless],
                 backing: .buffered,
@@ -39,11 +48,13 @@ public final class SwiftyWizard {
                 )
             )
 
+            // Keep the session alive while AppKit owns the modal window.
             SwiftyWizardModalSession.retain(session, for: window)
 
             if let parentWindow = view?.window {
                 session.parentWindow = parentWindow
                 parentWindow.beginSheet(window)
+                window.makeKey()
             } else {
                 window.center()
                 window.makeKeyAndOrderFront(nil)
@@ -52,6 +63,7 @@ public final class SwiftyWizard {
         }
     }
     #else
+    /// Placeholder for non-macOS platforms until platform-specific presentation is added.
     @MainActor
     public static func runWizard(
         wizardDef: String,
@@ -64,6 +76,18 @@ public final class SwiftyWizard {
 }
 
 #if os(macOS)
+/// Borderless windows do not become key by default, but text fields need a key window for focus.
+private final class SwiftyWizardModalWindow: NSWindow {
+    override var canBecomeKey: Bool {
+        true
+    }
+
+    override var canBecomeMain: Bool {
+        true
+    }
+}
+
+/// Hosts a `SwiftyWizardView` with local output state for modal presentation.
 private struct SwiftyWizardModalView: View {
     let wizardDef: String
     let resources: [String: Any?]
@@ -85,6 +109,7 @@ private struct SwiftyWizardModalView: View {
 
 @MainActor
 private final class SwiftyWizardModalSession: NSObject, NSWindowDelegate {
+    // AppKit window delegates are weak, so the active session is retained here by window identity.
     private static var retainedSessions: [ObjectIdentifier: SwiftyWizardModalSession] = [:]
 
     private var continuation: CheckedContinuation<[String: Any?], Never>?
@@ -95,6 +120,7 @@ private final class SwiftyWizardModalSession: NSObject, NSWindowDelegate {
         self.continuation = continuation
     }
 
+    /// Closes the modal or sheet and resumes the async `runWizard` caller once.
     func finish(_ output: [String: Any?]) {
         guard let continuation else {
             return

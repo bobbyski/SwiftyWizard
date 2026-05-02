@@ -1,14 +1,24 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// The button used to leave a wizard.
 public enum SwiftyWizardExitButton: String {
+    /// The user completed the wizard.
     case done = "DONE"
+
+    /// The user canceled the wizard.
     case cancel = "CANCEL"
 }
 
+/// A SwiftUI view that renders `ask` steps from a SwiftyWizard YAML definition.
 public struct SwiftyWizardView: View {
+    /// YAML text describing the wizard.
     public let wizardDef: String
+
+    /// Named values or assets available to the wizard while rendering.
     public let resources: [String: Any?]
+
+    /// Collected answers keyed by each question's `variable` value.
     @Binding public var output: [String: Any?]
 
     @State private var currentStepIndex = 0
@@ -18,6 +28,13 @@ public struct SwiftyWizardView: View {
     private let wizard: WizardDefinition
     private let onExit: ([String: Any?]) -> Void
 
+    /// Creates a wizard view from YAML text and caller-owned output state.
+    ///
+    /// - Parameters:
+    ///   - wizardDef: YAML text describing the wizard.
+    ///   - resources: Named values and assets, such as images, referenced by the wizard.
+    ///   - output: A binding to the collected wizard answers.
+    ///   - onExit: Called with `output` when the user presses Cancel or Done.
     public init(
         wizardDef: String,
         resources: [String: Any?],
@@ -68,7 +85,14 @@ public struct SwiftyWizardView: View {
         let step = wizard.askSteps[currentStepIndex]
 
         return VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 12) {
+                if let image = imageResource(named: step.headerImage) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 48, height: 48)
+                }
+
                 Text(renderTemplate(step.title))
                     .font(.title.bold())
             }
@@ -80,11 +104,27 @@ public struct SwiftyWizardView: View {
                         questionView(for: question)
                     }
                 }
-                .padding(24)
+                .padding(.vertical, 24)
+                .padding(.horizontal, 40)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            stepBackground(for: step)
+        }
+    }
+
+    @ViewBuilder
+    private func stepBackground(for step: WizardAskStep) -> some View {
+        if let image = imageResource(named: step.background) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .opacity(step.backgroundAlpha)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+        }
     }
 
     private var buttonBar: some View {
@@ -119,13 +159,13 @@ public struct SwiftyWizardView: View {
             Text(renderTemplate(question.prompt))
                 .font(.headline)
 
+            inputView(for: question)
+
             if let help = question.help, !help.isEmpty {
                 Text(renderTemplate(help))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-
-            inputView(for: question)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -289,6 +329,7 @@ public struct SwiftyWizardView: View {
     private func applyDefaults() {
         for step in wizard.askSteps {
             for question in step.questions where output[question.variable] == nil {
+                // Defaults are written once so user edits are never overwritten during redraws.
                 if let value = question.defaultValue as? String {
                     output[question.variable] = renderTemplate(value)
                 } else {
@@ -347,6 +388,7 @@ public struct SwiftyWizardView: View {
         var rendered = ""
         var remainder = text[...]
 
+        // Unresolved placeholders stay visible in the UI with their braces intact.
         while let startRange = remainder.range(of: "{{") {
             rendered += remainder[..<startRange.lowerBound]
 
@@ -378,22 +420,36 @@ public struct SwiftyWizardView: View {
 
         return nil
     }
+
+    private func imageResource(named name: String?) -> NSImage? {
+        guard let name, let value = resources[name] ?? nil else {
+            return nil
+        }
+
+        return value as? NSImage
+    }
 }
 
+/// Transient file-picker state for a file, directory, or image question.
 private struct FilePickerRequest {
     var variable: String
     var allowedTypes: [UTType]
 }
 
+/// Parsed wizard data used by the renderer.
 private struct WizardDefinition {
     var name: String
     var exitButtonVariable: String?
     var askSteps: [WizardAskStep]
 }
 
+/// One rendered panel in the wizard.
 private struct WizardAskStep: Identifiable {
     let id = UUID()
     var title: String
+    var background: String?
+    var backgroundAlpha: Double
+    var headerImage: String?
     var cancelButtonText: String?
     var backButtonText: String?
     var nextButtonText: String?
@@ -401,6 +457,7 @@ private struct WizardAskStep: Identifiable {
     var questions: [WizardQuestion]
 }
 
+/// One input element inside an `ask` step.
 private struct WizardQuestion: Identifiable {
     var id: String { variable }
     var variable: String
@@ -411,6 +468,7 @@ private struct WizardQuestion: Identifiable {
     var defaultValue: Any?
 }
 
+/// Supported question input types.
 private enum WizardQuestionType: String {
     case string
     case number
@@ -459,6 +517,10 @@ private enum WizardQuestionType: String {
     }
 }
 
+/// Minimal YAML parser for the SwiftyWizard demo schema.
+///
+/// This intentionally parses only the subset currently used by the renderer. Fields for other
+/// parts of the system can remain in the YAML and are ignored until the framework supports them.
 private enum WizardDefinitionParser {
     static func parse(_ yaml: String) -> WizardDefinition {
         let lines = yaml
@@ -503,6 +565,7 @@ private enum WizardDefinitionParser {
             let stepStart = index
             index += 1
 
+            // Capture all indented lines until the next sibling YAML list item.
             while index < lines.count {
                 let nextLine = lines[index]
                 if nextLine.indent == line.indent && nextLine.text.hasPrefix("- ") {
@@ -520,6 +583,9 @@ private enum WizardDefinitionParser {
 
     private static func parseAskStep(from lines: [ParsedLine]) -> WizardAskStep {
         var title = "Step"
+        var background: String?
+        var backgroundAlpha = 1.0
+        var headerImage: String?
         var cancelButtonText: String?
         var backButtonText: String?
         var nextButtonText: String?
@@ -530,6 +596,14 @@ private enum WizardDefinitionParser {
         for (index, line) in lines.enumerated() {
             if line.text.hasPrefix("title:") && questions.isEmpty {
                 title = value(after: "title:", in: line.text)
+            } else if line.text.hasPrefix("background:") {
+                background = value(after: "background:", in: line.text)
+            } else if line.text.hasPrefix("backgroundAlpha:") {
+                backgroundAlpha = alphaValue(value(after: "backgroundAlpha:", in: line.text))
+            } else if line.text.hasPrefix("headerImage:") {
+                headerImage = value(after: "headerImage:", in: line.text)
+            } else if line.text.hasPrefix("icon:") {
+                headerImage = value(after: "icon:", in: line.text)
             } else if line.text.hasPrefix("cancelButtonText:") {
                 cancelButtonText = value(after: "cancelButtonText:", in: line.text)
             } else if line.text.hasPrefix("backButtonText:") {
@@ -552,6 +626,9 @@ private enum WizardDefinitionParser {
 
         return WizardAskStep(
             title: title,
+            background: background,
+            backgroundAlpha: backgroundAlpha,
+            headerImage: headerImage,
             cancelButtonText: cancelButtonText,
             backButtonText: backButtonText,
             nextButtonText: nextButtonText,
@@ -618,6 +695,7 @@ private enum WizardDefinitionParser {
     private static func value(after prefix: String, in text: String) -> String {
         let rawValue = text.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces)
 
+        // Strip simple quoted scalars used in the demo YAML.
         if rawValue.hasPrefix("\""), rawValue.hasSuffix("\""), rawValue.count >= 2 {
             return String(rawValue.dropFirst().dropLast())
         }
@@ -628,8 +706,24 @@ private enum WizardDefinitionParser {
     private static func boolValue(_ value: String) -> Bool {
         ["true", "yes", "1"].contains(value.lowercased())
     }
+
+    private static func alphaValue(_ value: String) -> Double {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmed.hasSuffix("%") {
+            let percent = trimmed.dropLast().trimmingCharacters(in: .whitespacesAndNewlines)
+            return clampedAlpha((Double(percent) ?? 100) / 100)
+        }
+
+        return clampedAlpha(Double(trimmed) ?? 1)
+    }
+
+    private static func clampedAlpha(_ value: Double) -> Double {
+        min(max(value, 0), 1)
+    }
 }
 
+/// A YAML line with indentation metadata for simple block parsing.
 private struct ParsedLine {
     var indent: Int
     var text: String
