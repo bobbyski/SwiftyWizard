@@ -188,6 +188,15 @@ public struct SwiftyWizardView: View {
             )
             .labelsHidden()
 
+        case .choice:
+            Picker("", selection: stringBinding(for: question.variable)) {
+                ForEach(question.options) { option in
+                    Text(renderTemplate(option.label)).tag(option.value)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+
         case .directory, .file, .imageFile:
             HStack(spacing: 8) {
                 TextField("", text: stringBinding(for: question.variable))
@@ -466,6 +475,14 @@ private struct WizardQuestion: Identifiable {
     var type: WizardQuestionType
     var required: Bool
     var defaultValue: Any?
+    var options: [WizardQuestionOption]
+}
+
+/// One selectable value inside a choice question.
+private struct WizardQuestionOption: Identifiable {
+    var id: String { value }
+    var value: String
+    var label: String
 }
 
 /// Supported question input types.
@@ -476,6 +493,7 @@ private enum WizardQuestionType: String {
     case money
     case date
     case boolean
+    case choice
     case directory
     case file
     case imageFile
@@ -492,6 +510,8 @@ private enum WizardQuestionType: String {
             self = .date
         case "boolean", "bool":
             self = .boolean
+        case "choice", "select", "popup", "picker", "menu":
+            self = .choice
         case "directory", "folder":
             self = .directory
         case "file":
@@ -644,8 +664,9 @@ private enum WizardDefinitionParser {
         var type = WizardQuestionType.string
         var required = false
         var defaultText: String?
+        var options: [WizardQuestionOption] = []
 
-        for line in lines {
+        for (index, line) in lines.enumerated() {
             if line.text.hasPrefix("- variable:") {
                 variable = value(after: "- variable:", in: line.text)
             } else if line.text.hasPrefix("prompt:") {
@@ -658,6 +679,10 @@ private enum WizardDefinitionParser {
                 required = boolValue(value(after: "required:", in: line.text))
             } else if line.text.hasPrefix("default:") {
                 defaultText = value(after: "default:", in: line.text)
+            } else if line.text.hasPrefix("- value:") {
+                let optionValue = value(after: "- value:", in: line.text)
+                let optionLabel = optionLabel(after: index, in: lines) ?? optionValue
+                options.append(WizardQuestionOption(value: optionValue, label: optionLabel))
             }
         }
 
@@ -671,13 +696,14 @@ private enum WizardDefinitionParser {
             help: help,
             type: type,
             required: required,
-            defaultValue: defaultValue(from: defaultText, type: type)
+            defaultValue: defaultValue(from: defaultText, type: type, options: options),
+            options: options
         )
     }
 
-    private static func defaultValue(from text: String?, type: WizardQuestionType) -> Any? {
+    private static func defaultValue(from text: String?, type: WizardQuestionType, options: [WizardQuestionOption] = []) -> Any? {
         guard let text else {
-            return nil
+            return type == .choice ? options.first?.value : nil
         }
 
         switch type {
@@ -690,6 +716,19 @@ private enum WizardDefinitionParser {
         default:
             return text
         }
+    }
+
+    private static func optionLabel(after index: Int, in lines: [ParsedLine]) -> String? {
+        guard index + 1 < lines.count else {
+            return nil
+        }
+
+        let next = lines[index + 1]
+        guard next.text.hasPrefix("label:") else {
+            return nil
+        }
+
+        return value(after: "label:", in: next.text)
     }
 
     private static func value(after prefix: String, in text: String) -> String {
