@@ -135,7 +135,15 @@ private final class SwiftyWizardModalSession: NSObject, NSWindowDelegate {
             window?.close()
         }
 
-        continuation.resume(returning: output)
+        // `[String: Any?]` cannot be proven `Sendable` — the values are `Any`,
+        // so they might be anything — and `withCheckedContinuation` erases the
+        // isolation that would otherwise make this safe. Both ends *are* the
+        // main actor here: this method is `@MainActor` and so is `runWizard`,
+        // whose caller receives the value. The hand-off is annotated rather
+        // than the API weakened, because typing the answers as `Sendable` would
+        // change the public contract for every existing wizard.
+        nonisolated(unsafe) let answers = output
+        continuation.resume(returning: answers)
         release()
     }
 
